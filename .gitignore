@@ -1,0 +1,19 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.vs/
+.vscode/
+*.DotSettings.user
+
+## Logs
+SqlServerMcp/Logs/
+
+## NuGet
+*.nupkg
+packages/
+
+## OS
+.DS_Store
+Thumbs.db
