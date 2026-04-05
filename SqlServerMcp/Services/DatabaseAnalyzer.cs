@@ -76,7 +76,7 @@ public class DatabaseAnalyzer : IDisposable
         const string fksSql = @"
             SELECT 
                 fk.name AS ForeignKeyName,
-                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS Column,
+                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS [Column],
                 OBJECT_SCHEMA_NAME(fkc.referenced_object_id) + '.' + OBJECT_NAME(fkc.referenced_object_id) AS ReferencedTable,
                 COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS ReferencedColumn
             FROM sys.foreign_keys fk
@@ -173,12 +173,12 @@ public class DatabaseAnalyzer : IDisposable
 
         const string referencesSql = @"
             SELECT 
-                ISNULL(d.referenced_schema_name, 'dbo') + '.' + d.referenced_entity_name AS ReferencedObject,
-                d.referenced_minor_name AS ReferencedColumn
+                ISNULL(d.referenced_schema_name, 'dbo') + '.' + d.referenced_entity_name AS ReferencedObject
             FROM sys.sql_expression_dependencies d
             INNER JOIN sys.objects o ON d.referencing_id = o.object_id
             INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
-            WHERE o.name = @Name AND s.name = @Schema";
+            WHERE o.name = @Name AND s.name = @Schema
+            GROUP BY d.referenced_schema_name, d.referenced_entity_name";
 
         var referencedBy = await conn.QueryAsync(referencedBySql, new { Schema = schema, Name = name });
         var references = await conn.QueryAsync(referencesSql, new { Schema = schema, Name = name });
