@@ -1,0 +1,84 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore SqlServerMcp/SqlServerMcp.csproj
+
+      - name: Build
+        run: dotnet build SqlServerMcp/SqlServerMcp.csproj -c Release --no-restore
+
+      - name: Publish (self-contained linux-x64)
+        run: dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/linux-x64
+
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/win-x64
+
+      - name: Publish (self-contained osx-x64)
+        run: dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/osx-x64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-binaries
+          path: artifacts/
+          retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish all platforms
+        run: |
+          dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./release/linux-x64
+          dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./release/win-x64
+          dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./release/osx-x64
+
+      - name: Package
+        run: |
+          cd release
+          tar czf ../sql-server-reviewer-mcp-linux-x64.tar.gz -C linux-x64 .
+          zip -j ../sql-server-reviewer-mcp-win-x64.zip win-x64/*
+          tar czf ../sql-server-reviewer-mcp-osx-x64.tar.gz -C osx-x64 .
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ steps.sha.outputs.short }}
+          name: Build ${{ steps.sha.outputs.short }}
+          files: |
+            sql-server-reviewer-mcp-linux-x64.tar.gz
+            sql-server-reviewer-mcp-win-x64.tar.gz
+            sql-server-reviewer-mcp-osx-x64.tar.gz
+          generate_release_notes: true

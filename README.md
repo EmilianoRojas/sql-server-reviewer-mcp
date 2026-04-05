@@ -1,5 +1,8 @@
 # SQL Server Reviewer MCP 🔍
 
+[![Build & Test](https://github.com/EmilianoRojas/sql-server-reviewer-mcp/actions/workflows/build.yml/badge.svg)](https://github.com/EmilianoRojas/sql-server-reviewer-mcp/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Un servidor [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) de **solo lectura** para SQL Server. Permite que clientes IA como Claude Desktop, Cursor o cualquier cliente MCP compatible analicen esquemas, dependencias, procedimientos almacenados e índices faltantes de tu base de datos — sin riesgo de modificar nada.
 
 ## ⚡ Características
@@ -32,7 +35,17 @@ Un servidor [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) de 
 
 ## 🚀 Instalación
 
-### 1. Clonar y compilar
+### Opción A: Descargar binario (recomendado)
+
+Descarga el ejecutable para tu plataforma desde [Releases](https://github.com/EmilianoRojas/sql-server-reviewer-mcp/releases):
+
+- `sql-server-reviewer-mcp-win-x64.zip` — Windows
+- `sql-server-reviewer-mcp-linux-x64.tar.gz` — Linux
+- `sql-server-reviewer-mcp-osx-x64.tar.gz` — macOS
+
+Estos son **self-contained** — no necesitas .NET instalado.
+
+### Opción B: Compilar desde fuente
 
 ```bash
 git clone https://github.com/EmilianoRojas/sql-server-reviewer-mcp.git
@@ -40,7 +53,13 @@ cd sql-server-reviewer-mcp/SqlServerMcp
 dotnet publish -c Release -o ./publish
 ```
 
-### 2. Verificar el ejecutable
+### Opción C: Docker
+
+```bash
+docker build -t sql-server-reviewer-mcp .
+```
+
+### Verificar
 
 ```bash
 # Linux/macOS
@@ -50,7 +69,7 @@ dotnet publish -c Release -o ./publish
 .\publish\SqlServerMcp.exe
 ```
 
-> El proceso esperará input en stdin. Si ves que se queda esperando, funciona correctamente. Cierra con `Ctrl+C`.
+> El proceso esperará input en stdin. Si se queda esperando, funciona correctamente. Cierra con `Ctrl+C`.
 
 ## ⚙️ Configuración
 
@@ -109,6 +128,25 @@ O usando el ejecutable publicado:
 ### Cursor
 
 En la configuración de Cursor, agrega el MCP server con los mismos parámetros de `command`, `args` y `env`.
+
+### Docker
+
+```json
+{
+  "mcpServers": {
+    "sql-server-reviewer": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "SQLSERVER_CONNECTION_STRING=Server=host.docker.internal;Database=MiBase;User Id=reader;Password=secret;TrustServerCertificate=True;",
+        "sql-server-reviewer-mcp"
+      ]
+    }
+  }
+}
+```
+
+> Nota: Usa `host.docker.internal` para conectar al SQL Server del host.
 
 ## 💡 Ejemplos de Uso
 

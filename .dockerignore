@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/Logs/
+**/.vs/
+.git
+.github
+*.md
+LICENSE
+test.sh
+global.json
