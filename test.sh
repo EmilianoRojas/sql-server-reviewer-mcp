@@ -97,6 +97,39 @@ run_test "get_table_relationships" \
     'FK_Orders_Customers'
 
 echo ""
+echo "--- New Tools ---"
+
+run_test "get_index_usage_stats" \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_index_usage_stats","arguments":{}}}' \
+    'content'
+
+run_test "get_trigger_definition" \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_trigger_definition","arguments":{"trigger_name":"trg_Orders_AfterInsert"}}}' \
+    'SET NOCOUNT ON'
+
+run_test "list_views" \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_views","arguments":{}}}' \
+    'vw_OrderSummary'
+
+run_test "get_table_row_counts" \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_table_row_counts","arguments":{}}}' \
+    'Customers'
+
+run_test "analyze_query_plan" \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"analyze_query_plan","arguments":{"query":"SELECT * FROM dbo.Orders WHERE CustomerID = 1"}}}' \
+    'ShowPlanXML'
+
+echo ""
 echo "================================================"
 echo "Results: $PASS passed, $FAIL failed"
 echo ""

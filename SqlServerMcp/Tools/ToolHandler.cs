@@ -37,6 +37,13 @@ public class ToolHandler : IToolHandler
                 "get_missing_indexes" => FormatJson(await _db.GetMissingIndexesAsync()),
                 "get_table_relationships" => FormatJson(await _db.GetTableRelationshipsAsync(
                     GetOptionalParam(arguments, "table_name"))),
+                "get_index_usage_stats" => FormatJson(await _db.GetIndexUsageStatsAsync()),
+                "get_trigger_definition" => await _db.GetTriggerDefinitionAsync(
+                    GetRequiredParam(arguments, "trigger_name")),
+                "list_views" => FormatJson(await _db.ListViewsAsync()),
+                "get_table_row_counts" => FormatJson(await _db.GetTableRowCountsAsync()),
+                "analyze_query_plan" => await _db.AnalyzeQueryPlanAsync(
+                    GetRequiredParam(arguments, "query")),
                 _ => throw new ArgumentException($"Unknown tool: {toolName}")
             };
 
