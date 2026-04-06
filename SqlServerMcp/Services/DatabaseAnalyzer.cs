@@ -257,6 +257,111 @@ public class DatabaseAnalyzer : IDisposable
         return await conn.QueryAsync(sql);
     }
 
+    public async Task<IEnumerable<dynamic>> GetIndexUsageStatsAsync()
+    {
+        using var conn = await OpenConnectionAsync();
+        const string sql = @"
+            SELECT TOP 30
+                OBJECT_SCHEMA_NAME(s.object_id) + '.' + OBJECT_NAME(s.object_id) AS [Table],
+                i.name AS IndexName,
+                i.type_desc AS IndexType,
+                s.user_seeks AS UserSeeks,
+                s.user_scans AS UserScans,
+                s.user_lookups AS UserLookups,
+                s.user_updates AS UserUpdates,
+                s.last_user_seek AS LastSeek,
+                s.last_user_scan AS LastScan,
+                CASE 
+                    WHEN (s.user_seeks + s.user_scans + s.user_lookups) = 0 AND s.user_updates > 0 
+                    THEN 'UNUSED - candidate for removal'
+                    WHEN s.user_updates > (s.user_seeks + s.user_scans + s.user_lookups) * 10 
+                    THEN 'LOW VALUE - updates >> reads'
+                    ELSE 'OK'
+                END AS Assessment
+            FROM sys.dm_db_index_usage_stats s
+            INNER JOIN sys.indexes i ON s.object_id = i.object_id AND s.index_id = i.index_id
+            WHERE s.database_id = DB_ID()
+              AND OBJECTPROPERTY(s.object_id, 'IsUserTable') = 1
+              AND i.name IS NOT NULL
+            ORDER BY (s.user_seeks + s.user_scans + s.user_lookups) ASC, s.user_updates DESC";
+
+        return await conn.QueryAsync(sql);
+    }
+
+    public async Task<string> GetTriggerDefinitionAsync(string triggerName)
+    {
+        using var conn = await OpenConnectionAsync();
+        var (schema, name) = ParseObjectName(triggerName);
+
+        const string sql = @"
+            SELECT m.definition
+            FROM sys.sql_modules m
+            INNER JOIN sys.triggers t ON m.object_id = t.object_id
+            LEFT JOIN sys.objects parent ON t.parent_id = parent.object_id
+            LEFT JOIN sys.schemas s ON parent.schema_id = s.schema_id
+            WHERE t.name = @Name
+              AND (s.name = @Schema OR t.parent_id = 0)";
+
+        var result = await conn.QueryFirstOrDefaultAsync<string>(sql, new { Schema = schema, Name = name });
+        return result ?? $"Trigger '{name}' not found.";
+    }
+
+    public async Task<IEnumerable<dynamic>> ListViewsAsync()
+    {
+        using var conn = await OpenConnectionAsync();
+        const string sql = @"
+            SELECT 
+                s.name AS [Schema],
+                v.name AS [View],
+                v.create_date AS Created,
+                v.modify_date AS LastModified,
+                LEN(m.definition) AS DefinitionLength
+            FROM sys.views v
+            INNER JOIN sys.schemas s ON v.schema_id = s.schema_id
+            INNER JOIN sys.sql_modules m ON v.object_id = m.object_id
+            WHERE v.is_ms_shipped = 0
+            ORDER BY s.name, v.name";
+
+        return await conn.QueryAsync(sql);
+    }
+
+    public async Task<IEnumerable<dynamic>> GetTableRowCountsAsync()
+    {
+        using var conn = await OpenConnectionAsync();
+        const string sql = @"
+            SELECT 
+                s.name AS [Schema],
+                t.name AS [Table],
+                p.rows AS ApproxRowCount,
+                (SELECT COUNT(*) FROM sys.columns c WHERE c.object_id = t.object_id) AS ColumnCount,
+                (SELECT COUNT(*) FROM sys.indexes i WHERE i.object_id = t.object_id AND i.index_id > 0) AS IndexCount
+            FROM sys.tables t
+            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+            INNER JOIN sys.partitions p ON t.object_id = p.object_id AND p.index_id IN (0, 1)
+            WHERE t.is_ms_shipped = 0
+            ORDER BY p.rows DESC";
+
+        return await conn.QueryAsync(sql);
+    }
+
+    public async Task<string> AnalyzeQueryPlanAsync(string query)
+    {
+        using var conn = await OpenConnectionAsync();
+
+        // Enable estimated plan XML, execute, then disable
+        await conn.ExecuteAsync("SET SHOWPLAN_XML ON");
+
+        try
+        {
+            var planXml = await conn.QueryFirstOrDefaultAsync<string>(query);
+            return planXml ?? "No execution plan returned.";
+        }
+        finally
+        {
+            await conn.ExecuteAsync("SET SHOWPLAN_XML OFF");
+        }
+    }
+
     private static (string schema, string name) ParseObjectName(string fullName)
     {
         var parts = fullName.Split('.', 2);

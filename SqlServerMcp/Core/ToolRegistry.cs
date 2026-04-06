@@ -132,6 +132,65 @@ public static class ToolRegistry
                 },
                 required = Array.Empty<string>()
             });
+
+        Register("get_index_usage_stats",
+            "Muestra estadísticas de uso real de los índices existentes: seeks, scans, lookups y updates. Identifica índices sin uso o de bajo valor.",
+            new
+            {
+                type = "object",
+                properties = new { },
+                required = Array.Empty<string>()
+            });
+
+        Register("get_trigger_definition",
+            "Obtiene el código fuente (definición T-SQL) de un trigger.",
+            new
+            {
+                type = "object",
+                properties = new
+                {
+                    trigger_name = new
+                    {
+                        type = "string",
+                        description = "Nombre del trigger (opcionalmente con esquema)"
+                    }
+                },
+                required = new[] { "trigger_name" }
+            });
+
+        Register("list_views",
+            "Lista todas las vistas de usuario con su esquema, fecha de creación y tamaño de definición.",
+            new
+            {
+                type = "object",
+                properties = new { },
+                required = Array.Empty<string>()
+            });
+
+        Register("get_table_row_counts",
+            "Devuelve el conteo aproximado de filas, cantidad de columnas e índices de cada tabla, ordenado por tamaño.",
+            new
+            {
+                type = "object",
+                properties = new { },
+                required = Array.Empty<string>()
+            });
+
+        Register("analyze_query_plan",
+            "Recibe una consulta SELECT y devuelve el plan de ejecución estimado (XML). Útil para analizar performance sin ejecutar la query.",
+            new
+            {
+                type = "object",
+                properties = new
+                {
+                    query = new
+                    {
+                        type = "string",
+                        description = "Consulta SQL SELECT para obtener su plan de ejecución estimado"
+                    }
+                },
+                required = new[] { "query" }
+            });
     }
 
     private static void Register(string name, string description, object inputSchema)
