@@ -188,6 +188,9 @@ public class DatabaseAnalyzer : IDisposable
 
     public async Task<IEnumerable<dynamic>> SearchInCodeAsync(string keyword)
     {
+        if (string.IsNullOrWhiteSpace(keyword) || keyword.Length > 200)
+            throw new ArgumentException("Keyword must be between 1 and 200 characters.");
+
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT 
@@ -346,9 +349,14 @@ public class DatabaseAnalyzer : IDisposable
 
     public async Task<string> AnalyzeQueryPlanAsync(string query)
     {
+        // Security: validate the query before executing
+        var validation = ValidateReadOnlyQuery(query);
+        if (validation is not null)
+            return $"BLOCKED: {validation}";
+
         using var conn = await OpenConnectionAsync();
 
-        // Enable estimated plan XML, execute, then disable
+        // SHOWPLAN_XML returns the estimated plan WITHOUT executing the query
         await conn.ExecuteAsync("SET SHOWPLAN_XML ON");
 
         try
@@ -360,6 +368,44 @@ public class DatabaseAnalyzer : IDisposable
         {
             await conn.ExecuteAsync("SET SHOWPLAN_XML OFF");
         }
+    }
+
+    /// <summary>
+    /// Validates that a query is read-only before allowing execution.
+    /// Blocks DDL, DML, and dangerous statements.
+    /// </summary>
+    private static string? ValidateReadOnlyQuery(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return "Query cannot be empty.";
+
+        var normalized = query.Trim().ToUpperInvariant();
+
+        // Must start with SELECT, WITH, or be a simple query
+        if (!normalized.StartsWith("SELECT") && !normalized.StartsWith("WITH") && !normalized.StartsWith("("))
+            return "Only SELECT queries are allowed. Query must start with SELECT or WITH.";
+
+        // Block dangerous keywords anywhere in the query
+        string[] blockedKeywords = {
+            "INSERT ", "UPDATE ", "DELETE ", "DROP ", "ALTER ", "CREATE ",
+            "TRUNCATE ", "EXEC ", "EXECUTE ", "EXEC(", "EXECUTE(",
+            "XP_", "SP_", "DBCC ", "GRANT ", "REVOKE ", "DENY ",
+            "BACKUP ", "RESTORE ", "SHUTDOWN", "RECONFIGURE",
+            "OPENROWSET", "OPENDATASOURCE", "OPENQUERY",
+            "BULK ", "INTO ", " INTO ",
+            "SET ", "WAITFOR ", "KILL ",
+            "ENABLE ", "DISABLE ",
+            "--", "/*", "*/",  // Block SQL comments (could hide malicious code)
+            ";",               // Block statement separators (multi-statement injection)
+        };
+
+        foreach (var keyword in blockedKeywords)
+        {
+            if (normalized.Contains(keyword))
+                return $"Blocked keyword detected: '{keyword.Trim()}'. Only read-only SELECT queries are allowed.";
+        }
+
+        return null; // Query is safe
     }
 
     private static (string schema, string name) ParseObjectName(string fullName)
