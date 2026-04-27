@@ -1,0 +1,18 @@
+# appsettings.json (base config, committed - placeholder values)
+# appsettings.Development.json - Local secrets gitignored separately below
+
+# .NET
+bin/
+obj/
+*.dll
+*.pdb
+
+# Logs
+Logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# === GITIGNORED FILES (do not commit these) ===
+appsettings.Development.json

@@ -4,29 +4,40 @@ using Serilog;
 
 namespace SqlServerMcp.Services;
 
-public class DatabaseAnalyzer : IDisposable
+public class DatabaseAnalyzer
 {
     private readonly string _connectionString;
+    private const int ConnectionTimeoutSeconds = 30;
 
     public DatabaseAnalyzer(string connectionString)
     {
         _connectionString = connectionString;
     }
 
+    private static string AppendConnectionTimeout(string connectionString)
+    {
+        // Only append if not already present
+        if (connectionString.Contains("Connection Timeout=", StringComparison.OrdinalIgnoreCase) ||
+            connectionString.Contains("Connect Timeout=", StringComparison.OrdinalIgnoreCase))
+            return connectionString;
+        return connectionString.TrimEnd(';') + $";Connection Timeout={ConnectionTimeoutSeconds}";
+    }
+
     private async Task<SqlConnection> OpenConnectionAsync()
     {
-        var conn = new SqlConnection(_connectionString);
+        var connString = AppendConnectionTimeout(_connectionString);
+        var conn = new SqlConnection(connString);
         await conn.OpenAsync();
         return conn;
     }
 
-    public async Task<IEnumerable<dynamic>> ListTablesAsync()
+    public async Task<IEnumerable<TableInfo>> ListTablesAsync()
     {
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT 
-                s.name AS [Schema],
-                t.name AS [Table],
+                s.name AS Schema,
+                t.name AS Table,
                 p.rows AS ApproxRowCount,
                 CAST(ROUND((SUM(a.total_pages) * 8.0) / 1024, 2) AS DECIMAL(18,2)) AS TotalSpaceMB,
                 t.create_date AS Created,
@@ -40,10 +51,10 @@ public class DatabaseAnalyzer : IDisposable
             GROUP BY s.name, t.name, p.rows, t.create_date, t.modify_date
             ORDER BY s.name, t.name";
 
-        return await conn.QueryAsync(sql);
+        return await conn.QueryAsync<TableInfo>(sql);
     }
 
-    public async Task<object> AnalyzeTableSchemaAsync(string tableName)
+    public async Task<TableSchemaInfo> AnalyzeTableSchemaAsync(string tableName)
     {
         using var conn = await OpenConnectionAsync();
         var (schema, table) = ParseObjectName(tableName);
@@ -53,7 +64,7 @@ public class DatabaseAnalyzer : IDisposable
                 c.name AS ColumnName,
                 tp.name AS DataType,
                 c.max_length AS MaxLength,
-                c.precision AS [Precision],
+                c.precision AS Precision,
                 c.scale AS Scale,
                 c.is_nullable AS IsNullable,
                 c.is_identity AS IsIdentity,
@@ -76,7 +87,7 @@ public class DatabaseAnalyzer : IDisposable
         const string fksSql = @"
             SELECT 
                 fk.name AS ForeignKeyName,
-                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS [Column],
+                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS Column,
                 OBJECT_SCHEMA_NAME(fkc.referenced_object_id) + '.' + OBJECT_NAME(fkc.referenced_object_id) AS ReferencedTable,
                 COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS ReferencedColumn
             FROM sys.foreign_keys fk
@@ -100,11 +111,11 @@ public class DatabaseAnalyzer : IDisposable
             WHERE t.name = @Table AND s.name = @Schema AND i.name IS NOT NULL
             GROUP BY i.name, i.type_desc, i.is_unique, i.is_primary_key";
 
-        var columns = await conn.QueryAsync(columnsSql, new { Schema = schema, Table = table });
-        var fks = await conn.QueryAsync(fksSql, new { Schema = schema, Table = table });
-        var indexes = await conn.QueryAsync(indexesSql, new { Schema = schema, Table = table });
+        var columns = await conn.QueryAsync<ColumnInfo>(columnsSql, new { Schema = schema, Table = table });
+        var fks = await conn.QueryAsync<ForeignKeyInfo>(fksSql, new { Schema = schema, Table = table });
+        var indexes = await conn.QueryAsync<IndexInfo>(indexesSql, new { Schema = schema, Table = table });
 
-        return new { Table = $"{schema}.{table}", Columns = columns, ForeignKeys = fks, Indexes = indexes };
+        return new TableSchemaInfo($"{schema}.{table}", columns, fks, indexes);
     }
 
     public async Task<string> GetSpDefinitionAsync(string spName)
@@ -123,13 +134,13 @@ public class DatabaseAnalyzer : IDisposable
         return result ?? $"Stored procedure '{schema}.{name}' not found.";
     }
 
-    public async Task<IEnumerable<dynamic>> ListStoredProceduresAsync()
+    public async Task<IEnumerable<StoredProcedureInfo>> ListStoredProceduresAsync()
     {
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT 
-                s.name AS [Schema],
-                p.name AS [Procedure],
+                s.name AS Schema,
+                p.name AS Procedure,
                 p.create_date AS Created,
                 p.modify_date AS LastModified
             FROM sys.procedures p
@@ -137,7 +148,7 @@ public class DatabaseAnalyzer : IDisposable
             WHERE p.is_ms_shipped = 0
             ORDER BY s.name, p.name";
 
-        return await conn.QueryAsync(sql);
+        return await conn.QueryAsync<StoredProcedureInfo>(sql);
     }
 
     public async Task<string> GetFunctionDefinitionAsync(string functionName)
@@ -157,14 +168,14 @@ public class DatabaseAnalyzer : IDisposable
         return result ?? $"Function '{schema}.{name}' not found.";
     }
 
-    public async Task<object> FindObjectDependenciesAsync(string objectName)
+    public async Task<ObjectDependency> FindObjectDependenciesAsync(string objectName)
     {
         using var conn = await OpenConnectionAsync();
         var (schema, name) = ParseObjectName(objectName);
 
         const string referencedBySql = @"
             SELECT 
-                OBJECT_SCHEMA_NAME(d.referencing_id) + '.' + OBJECT_NAME(d.referencing_id) AS ReferencingObject,
+                OBJECT_SCHEMA_NAME(d.referencing_id) + '.' + OBJECT_NAME(d.referencing_id) AS ObjectName,
                 o.type_desc AS ObjectType
             FROM sys.sql_expression_dependencies d
             INNER JOIN sys.objects o ON d.referencing_id = o.object_id
@@ -180,13 +191,13 @@ public class DatabaseAnalyzer : IDisposable
             WHERE o.name = @Name AND s.name = @Schema
             GROUP BY d.referenced_schema_name, d.referenced_entity_name";
 
-        var referencedBy = await conn.QueryAsync(referencedBySql, new { Schema = schema, Name = name });
-        var references = await conn.QueryAsync(referencesSql, new { Schema = schema, Name = name });
+        var referencedBy = await conn.QueryAsync<ReferencingObject>(referencedBySql, new { Schema = schema, Name = name });
+        var references = await conn.QueryAsync<string>(referencesSql, new { Schema = schema, Name = name });
 
-        return new { Object = $"{schema}.{name}", ReferencedBy = referencedBy, References = references };
+        return new ObjectDependency($"{schema}.{name}", referencedBy, references);
     }
 
-    public async Task<IEnumerable<dynamic>> SearchInCodeAsync(string keyword)
+    public async Task<IEnumerable<SearchResult>> SearchInCodeAsync(string keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword) || keyword.Length > 200)
             throw new ArgumentException("Keyword must be between 1 and 200 characters.");
@@ -194,7 +205,7 @@ public class DatabaseAnalyzer : IDisposable
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT 
-                OBJECT_SCHEMA_NAME(m.object_id) AS [Schema],
+                OBJECT_SCHEMA_NAME(m.object_id) AS Schema,
                 OBJECT_NAME(m.object_id) AS ObjectName,
                 o.type_desc AS ObjectType
             FROM sys.sql_modules m
@@ -202,15 +213,15 @@ public class DatabaseAnalyzer : IDisposable
             WHERE m.definition LIKE '%' + @Keyword + '%'
             ORDER BY o.type_desc, OBJECT_NAME(m.object_id)";
 
-        return await conn.QueryAsync(sql, new { Keyword = keyword });
+        return await conn.QueryAsync<SearchResult>(sql, new { Keyword = keyword });
     }
 
-    public async Task<IEnumerable<dynamic>> GetMissingIndexesAsync()
+    public async Task<IEnumerable<MissingIndex>> GetMissingIndexesAsync()
     {
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT TOP 20
-                OBJECT_SCHEMA_NAME(mid.object_id) + '.' + OBJECT_NAME(mid.object_id) AS [Table],
+                OBJECT_SCHEMA_NAME(mid.object_id) + '.' + OBJECT_NAME(mid.object_id) AS Table,
                 mid.equality_columns AS EqualityColumns,
                 mid.inequality_columns AS InequalityColumns,
                 mid.included_columns AS IncludedColumns,
@@ -226,10 +237,10 @@ public class DatabaseAnalyzer : IDisposable
             WHERE mid.database_id = DB_ID()
             ORDER BY ImprovementMeasure DESC";
 
-        return await conn.QueryAsync(sql);
+        return await conn.QueryAsync<MissingIndex>(sql);
     }
 
-    public async Task<IEnumerable<dynamic>> GetTableRelationshipsAsync(string? tableName)
+    public async Task<IEnumerable<TableRelationship>> GetTableRelationshipsAsync(string? tableName)
     {
         using var conn = await OpenConnectionAsync();
 
@@ -253,19 +264,19 @@ public class DatabaseAnalyzer : IDisposable
                OR (OBJECT_NAME(fkc.referenced_object_id) = @Table 
                    AND OBJECT_SCHEMA_NAME(fkc.referenced_object_id) = @Schema)";
             sql += "\n            ORDER BY ParentTable, fk.name";
-            return await conn.QueryAsync(sql, new { Schema = schema, Table = table });
+            return await conn.QueryAsync<TableRelationship>(sql, new { Schema = schema, Table = table });
         }
 
         sql += "\n            ORDER BY ParentTable, fk.name";
-        return await conn.QueryAsync(sql);
+        return await conn.QueryAsync<TableRelationship>(sql);
     }
 
-    public async Task<IEnumerable<dynamic>> GetIndexUsageStatsAsync()
+    public async Task<IEnumerable<IndexUsageStats>> GetIndexUsageStatsAsync()
     {
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT TOP 30
-                OBJECT_SCHEMA_NAME(s.object_id) + '.' + OBJECT_NAME(s.object_id) AS [Table],
+                OBJECT_SCHEMA_NAME(s.object_id) + '.' + OBJECT_NAME(s.object_id) AS Table,
                 i.name AS IndexName,
                 i.type_desc AS IndexType,
                 s.user_seeks AS UserSeeks,
@@ -288,7 +299,7 @@ public class DatabaseAnalyzer : IDisposable
               AND i.name IS NOT NULL
             ORDER BY (s.user_seeks + s.user_scans + s.user_lookups) ASC, s.user_updates DESC";
 
-        return await conn.QueryAsync(sql);
+        return await conn.QueryAsync<IndexUsageStats>(sql);
     }
 
     public async Task<string> GetTriggerDefinitionAsync(string triggerName)
@@ -309,13 +320,13 @@ public class DatabaseAnalyzer : IDisposable
         return result ?? $"Trigger '{name}' not found.";
     }
 
-    public async Task<IEnumerable<dynamic>> ListViewsAsync()
+    public async Task<IEnumerable<ViewInfo>> ListViewsAsync()
     {
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT 
-                s.name AS [Schema],
-                v.name AS [View],
+                s.name AS Schema,
+                v.name AS View,
                 v.create_date AS Created,
                 v.modify_date AS LastModified,
                 LEN(m.definition) AS DefinitionLength
@@ -325,16 +336,16 @@ public class DatabaseAnalyzer : IDisposable
             WHERE v.is_ms_shipped = 0
             ORDER BY s.name, v.name";
 
-        return await conn.QueryAsync(sql);
+        return await conn.QueryAsync<ViewInfo>(sql);
     }
 
-    public async Task<IEnumerable<dynamic>> GetTableRowCountsAsync()
+    public async Task<IEnumerable<TableRowCount>> GetTableRowCountsAsync()
     {
         using var conn = await OpenConnectionAsync();
         const string sql = @"
             SELECT 
-                s.name AS [Schema],
-                t.name AS [Table],
+                s.name AS Schema,
+                t.name AS Table,
                 p.rows AS ApproxRowCount,
                 (SELECT COUNT(*) FROM sys.columns c WHERE c.object_id = t.object_id) AS ColumnCount,
                 (SELECT COUNT(*) FROM sys.indexes i WHERE i.object_id = t.object_id AND i.index_id > 0) AS IndexCount
@@ -344,7 +355,7 @@ public class DatabaseAnalyzer : IDisposable
             WHERE t.is_ms_shipped = 0
             ORDER BY p.rows DESC";
 
-        return await conn.QueryAsync(sql);
+        return await conn.QueryAsync<TableRowCount>(sql);
     }
 
     public async Task<string> AnalyzeQueryPlanAsync(string query)
@@ -414,10 +425,5 @@ public class DatabaseAnalyzer : IDisposable
         return parts.Length == 2
             ? (parts[0].Trim('[', ']', ' '), parts[1].Trim('[', ']', ' '))
             : ("dbo", parts[0].Trim('[', ']', ' '));
-    }
-
-    public void Dispose()
-    {
-        // Dapper manages connections per-call, nothing to dispose at service level
     }
 }
