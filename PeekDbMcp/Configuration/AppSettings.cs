@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace SqlServerMcp.Configuration;
+namespace PeekDbMcp.Configuration;
 
 public class AppSettings
 {

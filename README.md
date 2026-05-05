@@ -1,6 +1,6 @@
 # SQL Server Reviewer MCP 🔍
 
-[![Build & Test](https://github.com/EmilianoRojas/sql-server-reviewer-mcp/actions/workflows/build.yml/badge.svg)](https://github.com/EmilianoRojas/sql-server-reviewer-mcp/actions/workflows/build.yml)
+[![Build & Test](https://github.com/EmilianoRojas/peekdb-mcp/actions/workflows/build.yml/badge.svg)](https://github.com/EmilianoRojas/peekdb-mcp/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Un servidor [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) de **solo lectura** para SQL Server. Permite que clientes IA como Claude Desktop, Cursor o cualquier cliente MCP compatible analicen esquemas, dependencias, procedimientos almacenados e índices faltantes de tu base de datos — sin riesgo de modificar nada.
@@ -37,36 +37,36 @@ Un servidor [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) de 
 
 ### Opción A: Descargar binario (recomendado)
 
-Descarga el ejecutable para tu plataforma desde [Releases](https://github.com/EmilianoRojas/sql-server-reviewer-mcp/releases):
+Descarga el ejecutable para tu plataforma desde [Releases](https://github.com/EmilianoRojas/peekdb-mcp/releases):
 
-- `sql-server-reviewer-mcp-win-x64.zip` — Windows
-- `sql-server-reviewer-mcp-linux-x64.tar.gz` — Linux
-- `sql-server-reviewer-mcp-osx-x64.tar.gz` — macOS
+- `peekdb-mcp-win-x64.zip` — Windows
+- `peekdb-mcp-linux-x64.tar.gz` — Linux
+- `peekdb-mcp-osx-x64.tar.gz` — macOS
 
 Estos son **self-contained** — no necesitas .NET instalado.
 
 ### Opción B: Compilar desde fuente
 
 ```bash
-git clone https://github.com/EmilianoRojas/sql-server-reviewer-mcp.git
-cd sql-server-reviewer-mcp/SqlServerMcp
+git clone https://github.com/EmilianoRojas/peekdb-mcp.git
+cd peekdb-mcp/PeekDbMcp
 dotnet publish -c Release -o ./publish
 ```
 
 ### Opción C: Docker
 
 ```bash
-docker build -t sql-server-reviewer-mcp .
+docker build -t peekdb-mcp .
 ```
 
 ### Verificar
 
 ```bash
 # Linux/macOS
-./publish/SqlServerMcp
+./publish/PeekDbMcp
 
 # Windows
-.\publish\SqlServerMcp.exe
+.\publish\PeekDbMcp.exe
 ```
 
 > El proceso esperará input en stdin. Si se queda esperando, funciona correctamente. Cierra con `Ctrl+C`.
@@ -99,9 +99,9 @@ Edita tu archivo de configuración (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "sql-server-reviewer": {
+    "peekdb": {
       "command": "dotnet",
-      "args": ["run", "--project", "C:/ruta/a/sql-server-reviewer-mcp/SqlServerMcp"],
+      "args": ["run", "--project", "C:/ruta/a/peekdb-mcp/PeekDbMcp"],
       "env": {
         "SQLSERVER_CONNECTION_STRING": "Server=localhost;Database=MiBase;User Id=reader;Password=secret;TrustServerCertificate=True;"
       }
@@ -115,8 +115,8 @@ O usando el ejecutable publicado:
 ```json
 {
   "mcpServers": {
-    "sql-server-reviewer": {
-      "command": "C:/ruta/a/sql-server-reviewer-mcp/SqlServerMcp/publish/SqlServerMcp.exe",
+    "peekdb": {
+      "command": "C:/ruta/a/peekdb-mcp/PeekDbMcp/publish/PeekDbMcp.exe",
       "env": {
         "SQLSERVER_CONNECTION_STRING": "Server=localhost;Database=MiBase;User Id=reader;Password=secret;TrustServerCertificate=True;"
       }
@@ -134,12 +134,12 @@ En la configuración de Cursor, agrega el MCP server con los mismos parámetros 
 ```json
 {
   "mcpServers": {
-    "sql-server-reviewer": {
+    "peekdb": {
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
         "-e", "SQLSERVER_CONNECTION_STRING=Server=host.docker.internal;Database=MiBase;User Id=reader;Password=secret;TrustServerCertificate=True;",
-        "sql-server-reviewer-mcp"
+        "peekdb-mcp"
       ]
     }
   }
@@ -183,7 +183,7 @@ GRANT VIEW DEFINITION TO McpReader;
 ## 📂 Estructura del Proyecto
 
 ```
-SqlServerMcp/
+PeekDbMcp/
 ├── Program.cs                  # Entry point, Serilog config
 ├── Core/
 │   ├── McpDispatcher.cs        # JSON-RPC stdin/stdout loop
@@ -202,11 +202,11 @@ Para más detalles sobre la arquitectura, ver [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## 📝 Logs
 
-Los logs se escriben en `SqlServerMcp/Logs/` (o junto al ejecutable publicado). Rotación diaria, retención de 7 días.
+Los logs se escriben en `PeekDbMcp/Logs/` (o junto al ejecutable publicado). Rotación diaria, retención de 7 días.
 
 ```bash
 # Ver logs en tiempo real
-tail -f SqlServerMcp/Logs/mcp-20260405.log
+tail -f PeekDbMcp/Logs/mcp-20260405.log
 ```
 
 ## 🤝 Contribuir

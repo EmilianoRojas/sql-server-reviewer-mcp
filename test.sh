@@ -5,7 +5,7 @@
 export PATH=$PATH:/home/emiliano/.dotnet
 export SQLSERVER_CONNECTION_STRING="Server=localhost;Database=McpTestDB;User Id=McpReader;Password=McpRead2024!;TrustServerCertificate=True;"
 
-PROJECT_DIR="$(cd "$(dirname "$0")/SqlServerMcp" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")/PeekDbMcp" && pwd)"
 PASS=0
 FAIL=0
 
