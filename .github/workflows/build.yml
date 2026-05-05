@@ -19,19 +19,19 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore SqlServerMcp/SqlServerMcp.csproj
+        run: dotnet restore PeekDbMcp/PeekDbMcp.csproj
 
       - name: Build
-        run: dotnet build SqlServerMcp/SqlServerMcp.csproj -c Release --no-restore
+        run: dotnet build PeekDbMcp/PeekDbMcp.csproj -c Release --no-restore
 
       - name: Publish (self-contained linux-x64)
-        run: dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/linux-x64
+        run: dotnet publish PeekDbMcp/PeekDbMcp.csproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/linux-x64
 
       - name: Publish (self-contained win-x64)
-        run: dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/win-x64
+        run: dotnet publish PeekDbMcp/PeekDbMcp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/win-x64
 
       - name: Publish (self-contained osx-x64)
-        run: dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/osx-x64
+        run: dotnet publish PeekDbMcp/PeekDbMcp.csproj -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./artifacts/osx-x64
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -57,16 +57,16 @@ jobs:
 
       - name: Publish all platforms
         run: |
-          dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./release/linux-x64
-          dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./release/win-x64
-          dotnet publish SqlServerMcp/SqlServerMcp.csproj -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./release/osx-x64
+          dotnet publish PeekDbMcp/PeekDbMcp.csproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o ./release/linux-x64
+          dotnet publish PeekDbMcp/PeekDbMcp.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o ./release/win-x64
+          dotnet publish PeekDbMcp/PeekDbMcp.csproj -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./release/osx-x64
 
       - name: Package
         run: |
           cd release
-          tar czf ../sql-server-reviewer-mcp-linux-x64.tar.gz -C linux-x64 .
-          zip -j ../sql-server-reviewer-mcp-win-x64.zip win-x64/*
-          tar czf ../sql-server-reviewer-mcp-osx-x64.tar.gz -C osx-x64 .
+          tar czf ../peekdb-mcp-linux-x64.tar.gz -C linux-x64 .
+          zip -j ../peekdb-mcp-win-x64.zip win-x64/*
+          tar czf ../peekdb-mcp-osx-x64.tar.gz -C osx-x64 .
 
       - name: Get short SHA
         id: sha
@@ -78,7 +78,7 @@ jobs:
           tag_name: build-${{ steps.sha.outputs.short }}
           name: Build ${{ steps.sha.outputs.short }}
           files: |
-            sql-server-reviewer-mcp-linux-x64.tar.gz
-            sql-server-reviewer-mcp-win-x64.tar.gz
-            sql-server-reviewer-mcp-osx-x64.tar.gz
+            peekdb-mcp-linux-x64.tar.gz
+            peekdb-mcp-win-x64.zip
+            peekdb-mcp-osx-x64.tar.gz
           generate_release_notes: true
