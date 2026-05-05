@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Serilog;
 
-namespace SqlServerMcp.Core;
+namespace PeekDbMcp.Core;
 
 public class McpDispatcher
 {

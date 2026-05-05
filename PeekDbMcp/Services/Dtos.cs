@@ -1,4 +1,4 @@
-namespace SqlServerMcp.Services;
+namespace PeekDbMcp.Services;
 
 // ============================================
 // TABLE & SCHEMA DTOs

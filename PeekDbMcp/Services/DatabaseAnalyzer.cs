@@ -2,7 +2,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using Serilog;
 
-namespace SqlServerMcp.Services;
+namespace PeekDbMcp.Services;
 
 public class DatabaseAnalyzer
 {

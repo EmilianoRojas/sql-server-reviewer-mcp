@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Serilog;
-using SqlServerMcp.Core;
-using SqlServerMcp.Services;
+using PeekDbMcp.Core;
+using PeekDbMcp.Services;
 
-namespace SqlServerMcp.Tools;
+namespace PeekDbMcp.Tools;
 
 public class ToolHandler : IToolHandler
 {

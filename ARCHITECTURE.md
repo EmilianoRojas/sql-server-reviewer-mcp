@@ -17,7 +17,7 @@ El proyecto es una **Aplicación de Consola en .NET** que se ejecuta como un pro
 ## 📂 Estructura del Proyecto
 
 ```
-SqlServerMcp/
+PeekDbMcp/
 ├── Program.cs                  # Punto de entrada, configuración de DI y Host
 ├── Core/
 │   ├── McpDispatcher.cs        # Ciclo infinito de lectura/escritura (Console.In/Out)

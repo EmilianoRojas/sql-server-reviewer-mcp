@@ -1,8 +1,8 @@
 using Serilog;
-using SqlServerMcp.Configuration;
-using SqlServerMcp.Core;
-using SqlServerMcp.Services;
-using SqlServerMcp.Tools;
+using PeekDbMcp.Configuration;
+using PeekDbMcp.Core;
+using PeekDbMcp.Services;
+using PeekDbMcp.Tools;
 
 try
 {
