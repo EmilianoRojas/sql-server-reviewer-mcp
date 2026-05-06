@@ -1,51 +1,51 @@
-# SQL Server Reviewer MCP 🔍
+# peekdb-mcp 🔍
 
 [![Build & Test](https://github.com/EmilianoRojas/peekdb-mcp/actions/workflows/build.yml/badge.svg)](https://github.com/EmilianoRojas/peekdb-mcp/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Un servidor [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) de **solo lectura** para SQL Server. Permite que clientes IA como Claude Desktop, Cursor o cualquier cliente MCP compatible analicen esquemas, dependencias, procedimientos almacenados e índices faltantes de tu base de datos — sin riesgo de modificar nada.
+A **read-only** [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for SQL Server. Enables AI clients like Claude Desktop, Cursor, or any MCP-compatible client to analyze schemas, dependencies, stored procedures, and missing indexes — without risking any data changes.
 
-## ⚡ Características
+## ⚡ Features
 
-- **9 herramientas** de análisis listas para usar
-- **Solo lectura** — no ejecuta DDL ni DML, solo consultas a vistas de sistema
-- **Queries parametrizadas** — protección contra inyección SQL
-- **Comunicación stdio** — JSON-RPC 2.0 vía stdin/stdout
-- **Logging seguro** — Serilog escribe solo a archivos, nunca a stdout
+- **9 ready-to-use** analysis tools
+- **Read-only** — no DDL or DML execution, only system view queries
+- **Parameterized queries** — SQL injection protection
+- **stdio communication** — JSON-RPC 2.0 via stdin/stdout
+- **Secure logging** — Serilog writes to files only, never to stdout
 
-## 🛠️ Herramientas Disponibles
+## 🛠️ Available Tools
 
-| Herramienta | Descripción |
+| Tool | Description |
 |---|---|
-| `list_tables` | Lista todas las tablas con filas aproximadas y espacio |
-| `analyze_table_schema` | Columnas, tipos, PKs, FKs e índices de una tabla |
-| `get_sp_definition` | Código fuente de un procedimiento almacenado |
-| `list_stored_procedures` | Catálogo de todos los SPs |
-| `get_function_definition` | Código fuente de una función |
-| `find_object_dependencies` | Qué objetos referencia y quién lo referencia |
-| `search_in_code` | Buscar texto en el código de todos los objetos |
-| `get_missing_indexes` | Índices faltantes sugeridos por el motor (DMVs) |
-| `get_table_relationships` | Mapa de foreign keys |
+| `list_tables` | Lists all tables with approximate row counts and space |
+| `analyze_table_schema` | Columns, types, PKs, FKs, and indexes of a table |
+| `get_sp_definition` | Source code of a stored procedure |
+| `list_stored_procedures` | Catalog of all stored procedures |
+| `get_function_definition` | Source code of a function |
+| `find_object_dependencies` | What objects reference and who references it |
+| `search_in_code` | Search text in all objects' code |
+| `get_missing_indexes` | Missing indexes suggested by the engine (DMVs) |
+| `get_table_relationships` | Foreign key map |
 
-## 📋 Requisitos
+## 📋 Requirements
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) o superior
-- Acceso a una instancia de SQL Server
-- Un usuario SQL con permisos de solo lectura (recomendado: `db_datareader` + `VIEW DEFINITION`)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or higher
+- Access to a SQL Server instance
+- A SQL user with read-only permissions (recommended: `db_datareader` + `VIEW DEFINITION`)
 
-## 🚀 Instalación
+## 🚀 Installation
 
-### Opción A: Descargar binario (recomendado)
+### Option A: Download binary (recommended)
 
-Descarga el ejecutable para tu plataforma desde [Releases](https://github.com/EmilianoRojas/peekdb-mcp/releases):
+Download the executable for your platform from [Releases](https://github.com/EmilianoRojas/peekdb-mcp/releases):
 
 - `peekdb-mcp-win-x64.zip` — Windows
 - `peekdb-mcp-linux-x64.tar.gz` — Linux
 - `peekdb-mcp-osx-x64.tar.gz` — macOS
 
-Estos son **self-contained** — no necesitas .NET instalado.
+These are **self-contained** — no .NET installation required.
 
-### Opción B: Compilar desde fuente
+### Option B: Build from source
 
 ```bash
 git clone https://github.com/EmilianoRojas/peekdb-mcp.git
@@ -53,13 +53,13 @@ cd peekdb-mcp/PeekDbMcp
 dotnet publish -c Release -o ./publish
 ```
 
-### Opción C: Docker
+### Option C: Docker
 
 ```bash
 docker build -t peekdb-mcp .
 ```
 
-### Verificar
+### Verify
 
 ```bash
 # Linux/macOS
@@ -69,29 +69,29 @@ docker build -t peekdb-mcp .
 .\publish\PeekDbMcp.exe
 ```
 
-> El proceso esperará input en stdin. Si se queda esperando, funciona correctamente. Cierra con `Ctrl+C`.
+> The process will wait for input on stdin. If it stays waiting, it's working correctly. Exit with `Ctrl+C`.
 
-## ⚙️ Configuración
+## ⚙️ Configuration
 
-La conexión a SQL Server se configura mediante la variable de entorno `SQLSERVER_CONNECTION_STRING`.
+SQL Server connection is configured via the `SQLSERVER_CONNECTION_STRING` environment variable.
 
-### Formato de la cadena de conexión
-
-```
-Server=tu-servidor;Database=tu-base;User Id=tu-usuario;Password=tu-password;TrustServerCertificate=True;
-```
-
-Para Windows Authentication:
+### Connection String Format
 
 ```
-Server=tu-servidor;Database=tu-base;Integrated Security=True;TrustServerCertificate=True;
+Server=your-server;Database=your-db;User Id=your-user;Password=your-password;TrustServerCertificate=True;
 ```
 
-## 🔌 Integración con Clientes MCP
+For Windows Authentication:
+
+```
+Server=your-server;Database=your-db;Integrated Security=True;TrustServerCertificate=True;
+```
+
+## 🔌 MCP Client Integration
 
 ### Claude Desktop
 
-Edita tu archivo de configuración (`claude_desktop_config.json`):
+Edit your config file (`claude_desktop_config.json`):
 
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -101,24 +101,24 @@ Edita tu archivo de configuración (`claude_desktop_config.json`):
   "mcpServers": {
     "peekdb": {
       "command": "dotnet",
-      "args": ["run", "--project", "C:/ruta/a/peekdb-mcp/PeekDbMcp"],
+      "args": ["run", "--project", "C:/path/to/peekdb-mcp/PeekDbMcp"],
       "env": {
-        "SQLSERVER_CONNECTION_STRING": "Server=localhost;Database=MiBase;User Id=reader;Password=secret;TrustServerCertificate=True;"
+        "SQLSERVER_CONNECTION_STRING": "Server=localhost;Database=MyDb;User Id=reader;Password=secret;TrustServerCertificate=True;"
       }
     }
   }
 }
 ```
 
-O usando el ejecutable publicado:
+Or using the published executable:
 
 ```json
 {
   "mcpServers": {
     "peekdb": {
-      "command": "C:/ruta/a/peekdb-mcp/PeekDbMcp/publish/PeekDbMcp.exe",
+      "command": "C:/path/to/peekdb-mcp/PeekDbMcp/publish/PeekDbMcp.exe",
       "env": {
-        "SQLSERVER_CONNECTION_STRING": "Server=localhost;Database=MiBase;User Id=reader;Password=secret;TrustServerCertificate=True;"
+        "SQLSERVER_CONNECTION_STRING": "Server=localhost;Database=MyDb;User Id=reader;Password=secret;TrustServerCertificate=True;"
       }
     }
   }
@@ -127,7 +127,7 @@ O usando el ejecutable publicado:
 
 ### Cursor
 
-En la configuración de Cursor, agrega el MCP server con los mismos parámetros de `command`, `args` y `env`.
+In Cursor's settings, add the MCP server with the same `command`, `args`, and `env` parameters.
 
 ### Docker
 
@@ -138,7 +138,7 @@ En la configuración de Cursor, agrega el MCP server con los mismos parámetros 
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
-        "-e", "SQLSERVER_CONNECTION_STRING=Server=host.docker.internal;Database=MiBase;User Id=reader;Password=secret;TrustServerCertificate=True;",
+        "-e", "SQLSERVER_CONNECTION_STRING=Server=host.docker.internal;Database=MyDb;User Id=reader;Password=secret;TrustServerCertificate=True;",
         "peekdb-mcp"
       ]
     }
@@ -146,77 +146,77 @@ En la configuración de Cursor, agrega el MCP server con los mismos parámetros 
 }
 ```
 
-> Nota: Usa `host.docker.internal` para conectar al SQL Server del host.
+> Note: Use `host.docker.internal` to connect to the host's SQL Server.
 
-## 💡 Ejemplos de Uso
+## 💡 Usage Examples
 
-Una vez configurado, puedes preguntarle a Claude cosas como:
+Once configured, you can ask Claude things like:
 
-- *"¿Qué tablas tiene esta base de datos?"*
-- *"Muéstrame el esquema de la tabla Users"*
-- *"Dame el código del SP usp_GetOrderDetails"*
-- *"¿Qué objetos dependen de la tabla Products?"*
-- *"Busca todas las referencias a 'CustomerID' en el código"*
-- *"¿Hay índices faltantes que debería crear?"*
-- *"Muéstrame el mapa de relaciones de la tabla Orders"*
+- *"What tables are in this database?"*
+- *"Show me the schema of the Users table"*
+- *"Give me the code for the usp_GetOrderDetails SP"*
+- *"What objects depend on the Products table?"*
+- *"Search for all references to 'CustomerID' in the code"*
+- *"Are there missing indexes I should create?"*
+- *"Show me the relationship map for the Orders table"*
 
-## 🔒 Seguridad
+## 🔒 Security
 
-### Permisos Recomendados
+### Recommended Permissions
 
-Crea un usuario SQL dedicado con permisos mínimos:
+Create a dedicated SQL user with minimal permissions:
 
 ```sql
-CREATE LOGIN McpReader WITH PASSWORD = 'tu-password-seguro';
-USE TuBaseDeDatos;
+CREATE LOGIN McpReader WITH PASSWORD = 'your-secure-password';
+USE YourDatabase;
 CREATE USER McpReader FOR LOGIN McpReader;
 ALTER ROLE db_datareader ADD MEMBER McpReader;
 GRANT VIEW DEFINITION TO McpReader;
 ```
 
-### Principios de Seguridad
+### Security Principles
 
-- **Solo lectura por diseño:** No existe ningún path de código que ejecute `INSERT`, `UPDATE`, `DELETE` o DDL
-- **Queries parametrizadas:** Todo input del LLM pasa por parámetros SQL de ADO.NET/Dapper
-- **Sin secrets en stdout:** Los logs van exclusivamente a archivos en `Logs/`
+- **Read-only by design:** No code path executes `INSERT`, `UPDATE`, `DELETE`, or DDL
+- **Parameterized queries:** All LLM input goes through ADO.NET/Dapper SQL parameters
+- **No secrets in stdout:** Logs go exclusively to files in `Logs/`
 
-## 📂 Estructura del Proyecto
+## 📂 Project Structure
 
 ```
 PeekDbMcp/
 ├── Program.cs                  # Entry point, Serilog config
 ├── Core/
 │   ├── McpDispatcher.cs        # JSON-RPC stdin/stdout loop
-│   ├── JsonRpcModels.cs        # Modelos de serialización
-│   └── ToolRegistry.cs         # Catálogo de herramientas + JSON Schemas
+│   ├── JsonRpcModels.cs        # Serialization models
+│   └── ToolRegistry.cs         # Tool catalog + JSON Schemas
 ├── Services/
-│   └── DatabaseAnalyzer.cs     # Queries T-SQL con Dapper
+│   └── DatabaseAnalyzer.cs     # T-SQL queries with Dapper
 ├── Tools/
-│   └── ToolHandler.cs          # Router de herramientas
+│   └── ToolHandler.cs          # Tool router
 ├── Configuration/
-│   └── AppSettings.cs          # Lectura de variables de entorno
-└── Logs/                       # Generado en runtime
+│   └── AppSettings.cs          # Environment variable reading
+└── Logs/                       # Generated at runtime
 ```
 
-Para más detalles sobre la arquitectura, ver [ARCHITECTURE.md](ARCHITECTURE.md).
+For architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 📝 Logs
 
-Los logs se escriben en `PeekDbMcp/Logs/` (o junto al ejecutable publicado). Rotación diaria, retención de 7 días.
+Logs are written to `PeekDbMcp/Logs/` (or next to the published executable). Daily rotation, 7-day retention.
 
 ```bash
-# Ver logs en tiempo real
+# Watch logs in real-time
 tail -f PeekDbMcp/Logs/mcp-20260405.log
 ```
 
-## 🤝 Contribuir
+## 🤝 Contributing
 
-1. Fork el repo
-2. Crea tu branch (`git checkout -b feature/nueva-herramienta`)
-3. Commit (`git commit -m 'feat: agregar herramienta X'`)
-4. Push (`git push origin feature/nueva-herramienta`)
-5. Abre un Pull Request
+1. Fork the repo
+2. Create your branch (`git checkout -b feature/new-tool`)
+3. Commit (`git commit -m 'feat: add tool X'`)
+4. Push (`git push origin feature/new-tool`)
+5. Open a Pull Request
 
-## 📄 Licencia
+## 📄 License
 
 MIT
