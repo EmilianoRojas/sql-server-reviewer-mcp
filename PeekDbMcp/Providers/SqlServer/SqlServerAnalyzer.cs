@@ -1,26 +1,20 @@
+using System.Data;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using PeekDbMcp.Abstractions;
+using PeekDbMcp.Abstractions.Models;
 using Serilog;
 
-namespace PeekDbMcp.Services;
+namespace PeekDbMcp.Providers.SqlServer;
 
-public class DatabaseAnalyzer
+public class SqlServerAnalyzer : IDatabaseAnalyzer
 {
     private readonly string _connectionString;
     private const int ConnectionTimeoutSeconds = 30;
 
-    public DatabaseAnalyzer(string connectionString)
+    public SqlServerAnalyzer(string connectionString)
     {
         _connectionString = connectionString;
-    }
-
-    private static string AppendConnectionTimeout(string connectionString)
-    {
-        // Only append if not already present
-        if (connectionString.Contains("Connection Timeout=", StringComparison.OrdinalIgnoreCase) ||
-            connectionString.Contains("Connect Timeout=", StringComparison.OrdinalIgnoreCase))
-            return connectionString;
-        return connectionString.TrimEnd(';') + $";Connection Timeout={ConnectionTimeoutSeconds}";
     }
 
     private async Task<SqlConnection> OpenConnectionAsync()
@@ -30,6 +24,24 @@ public class DatabaseAnalyzer
         await conn.OpenAsync();
         return conn;
     }
+
+    private static string AppendConnectionTimeout(string connectionString)
+    {
+        if (connectionString.Contains("Connection Timeout=", StringComparison.OrdinalIgnoreCase) ||
+            connectionString.Contains("Connect Timeout=", StringComparison.OrdinalIgnoreCase))
+            return connectionString;
+        return connectionString.TrimEnd(';') + $";Connection Timeout={ConnectionTimeoutSeconds}";
+    }
+
+    public ProviderCapabilities GetCapabilities() => new(
+        SupportsStoredProcedures: true,
+        SupportsFunctions: true,
+        SupportsTriggers: true,
+        SupportsMissingIndexes: true,
+        SupportsIndexStats: true,
+        SupportsQueryPlan: true,
+        ProviderName: "SqlServer"
+    );
 
     public async Task<IEnumerable<TableInfo>> ListTablesAsync()
     {
@@ -118,20 +130,47 @@ public class DatabaseAnalyzer
         return new TableSchemaInfo($"{schema}.{table}", columns, fks, indexes);
     }
 
-    public async Task<string> GetSpDefinitionAsync(string spName)
+    public async Task<IEnumerable<TableRowCount>> GetTableRowCountsAsync()
     {
         using var conn = await OpenConnectionAsync();
-        var (schema, name) = ParseObjectName(spName);
-
         const string sql = @"
-            SELECT m.definition
-            FROM sys.sql_modules m
-            INNER JOIN sys.procedures p ON m.object_id = p.object_id
-            INNER JOIN sys.schemas s ON p.schema_id = s.schema_id
-            WHERE p.name = @Name AND s.name = @Schema";
+            SELECT 
+                s.name AS Schema,
+                t.name AS Table,
+                p.rows AS ApproxRowCount,
+                (SELECT COUNT(*) FROM sys.columns c WHERE c.object_id = t.object_id) AS ColumnCount,
+                (SELECT COUNT(*) FROM sys.indexes i WHERE i.object_id = t.object_id AND i.index_id > 0) AS IndexCount
+            FROM sys.tables t
+            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+            INNER JOIN sys.partitions p ON t.object_id = p.object_id AND p.index_id IN (0, 1)
+            WHERE t.is_ms_shipped = 0
+            ORDER BY p.rows DESC";
 
-        var result = await conn.QueryFirstOrDefaultAsync<string>(sql, new { Schema = schema, Name = name });
-        return result ?? $"Stored procedure '{schema}.{name}' not found.";
+        return await conn.QueryAsync<TableRowCount>(sql);
+    }
+
+    public async Task<IEnumerable<TableRelationship>> GetTableRelationshipsAsync(string? tableName)
+    {
+        using var conn = await OpenConnectionAsync();
+
+        var sql = @"
+            SELECT 
+                OBJECT_SCHEMA_NAME(fk.parent_object_id) + '.' + OBJECT_NAME(fk.parent_object_id) AS ParentTable,
+                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS ParentColumn,
+                OBJECT_SCHEMA_NAME(fkc.referenced_object_id) + '.' + OBJECT_NAME(fkc.referenced_object_id) AS ReferencedTable,
+                COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS ReferencedColumn,
+                fk.name AS ForeignKeyName
+            FROM sys.foreign_keys fk
+            INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id";
+
+        if (!string.IsNullOrEmpty(tableName))
+        {
+            var (schema, table) = ParseObjectName(tableName);
+            sql += $"\nWHERE OBJECT_NAME(fk.parent_object_id) = @Table AND OBJECT_SCHEMA_NAME(fk.parent_object_id) = @Schema";
+            return await conn.QueryAsync<TableRelationship>(sql, new { Schema = schema, Table = table });
+        }
+
+        return await conn.QueryAsync<TableRelationship>(sql);
     }
 
     public async Task<IEnumerable<StoredProcedureInfo>> ListStoredProceduresAsync()
@@ -151,6 +190,40 @@ public class DatabaseAnalyzer
         return await conn.QueryAsync<StoredProcedureInfo>(sql);
     }
 
+    public async Task<string> GetSpDefinitionAsync(string spName)
+    {
+        using var conn = await OpenConnectionAsync();
+        var (schema, name) = ParseObjectName(spName);
+
+        const string sql = @"
+            SELECT m.definition
+            FROM sys.sql_modules m
+            INNER JOIN sys.procedures p ON m.object_id = p.object_id
+            INNER JOIN sys.schemas s ON p.schema_id = s.schema_id
+            WHERE p.name = @Name AND s.name = @Schema";
+
+        var result = await conn.QueryFirstOrDefaultAsync<string>(sql, new { Schema = schema, Name = name });
+        return result ?? $"Stored procedure '{schema}.{name}' not found.";
+    }
+
+    public async Task<IEnumerable<FunctionInfo>> ListFunctionsAsync()
+    {
+        using var conn = await OpenConnectionAsync();
+        const string sql = @"
+            SELECT 
+                s.name AS Schema,
+                o.name AS Function,
+                o.type_desc AS FunctionType,
+                o.create_date AS Created,
+                o.modify_date AS LastModified
+            FROM sys.objects o
+            INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
+            WHERE o.type IN ('FN', 'IF', 'TF')
+            ORDER BY s.name, o.name";
+
+        return await conn.QueryAsync<FunctionInfo>(sql);
+    }
+
     public async Task<string> GetFunctionDefinitionAsync(string functionName)
     {
         using var conn = await OpenConnectionAsync();
@@ -166,6 +239,82 @@ public class DatabaseAnalyzer
 
         var result = await conn.QueryFirstOrDefaultAsync<string>(sql, new { Schema = schema, Name = name });
         return result ?? $"Function '{schema}.{name}' not found.";
+    }
+
+    public async Task<IEnumerable<ViewInfo>> ListViewsAsync()
+    {
+        using var conn = await OpenConnectionAsync();
+        const string sql = @"
+            SELECT 
+                s.name AS Schema,
+                v.name AS View,
+                v.create_date AS Created,
+                v.modify_date AS LastModified,
+                LEN(m.definition) AS DefinitionLength
+            FROM sys.views v
+            INNER JOIN sys.schemas s ON v.schema_id = s.schema_id
+            INNER JOIN sys.sql_modules m ON v.object_id = m.object_id
+            WHERE v.is_ms_shipped = 0
+            ORDER BY s.name, v.name";
+
+        return await conn.QueryAsync<ViewInfo>(sql);
+    }
+
+    public async Task<string> GetViewDefinitionAsync(string viewName)
+    {
+        using var conn = await OpenConnectionAsync();
+        var (schema, name) = ParseObjectName(viewName);
+
+        const string sql = @"
+            SELECT m.definition
+            FROM sys.sql_modules m
+            INNER JOIN sys.views v ON m.object_id = v.object_id
+            INNER JOIN sys.schemas s ON v.schema_id = s.schema_id
+            WHERE v.name = @Name AND s.name = @Schema";
+
+        var result = await conn.QueryFirstOrDefaultAsync<string>(sql, new { Schema = schema, Name = name });
+        return result ?? $"View '{schema}.{name}' not found.";
+    }
+
+    public async Task<IEnumerable<TriggerInfo>> ListTriggersAsync()
+    {
+        using var conn = await OpenConnectionAsync();
+        const string sql = @"
+            SELECT 
+                s.name AS Schema,
+                t.name AS Trigger,
+                OBJECT_NAME(t.parent_id) AS TableName,
+                CASE 
+                    WHEN t.is_disabled = 1 THEN 'DISABLED'
+                    WHEN OBJECTPROPERTY(t.object_id, 'ExecIsInsteadOfTrigger') = 1 THEN 'INSTEAD OF'
+                    ELSE 'AFTER'
+                END AS TriggerTiming,
+                STRING_AGG(EVENTDATA().value('(/EVENT_INSTANCE/EventType)[1]', 'NVARCHAR(100)'), ', ') AS EventManipulation,
+                t.create_date AS Created,
+                t.modify_date AS LastModified
+            FROM sys.triggers t
+            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE t.is_ms_shipped = 0
+            GROUP BY s.name, t.name, t.parent_id, t.is_disabled, t.create_date, t.modify_date
+            ORDER BY s.name, t.name";
+
+        return await conn.QueryAsync<TriggerInfo>(sql);
+    }
+
+    public async Task<string> GetTriggerDefinitionAsync(string triggerName)
+    {
+        using var conn = await OpenConnectionAsync();
+        var (schema, name) = ParseObjectName(triggerName);
+
+        const string sql = @"
+            SELECT m.definition
+            FROM sys.sql_modules m
+            INNER JOIN sys.triggers t ON m.object_id = t.object_id
+            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE t.name = @Name AND s.name = @Schema";
+
+        var result = await conn.QueryFirstOrDefaultAsync<string>(sql, new { Schema = schema, Name = name });
+        return result ?? $"Trigger '{schema}.{name}' not found.";
     }
 
     public async Task<ObjectDependency> FindObjectDependenciesAsync(string objectName)
@@ -240,43 +389,12 @@ public class DatabaseAnalyzer
         return await conn.QueryAsync<MissingIndex>(sql);
     }
 
-    public async Task<IEnumerable<TableRelationship>> GetTableRelationshipsAsync(string? tableName)
-    {
-        using var conn = await OpenConnectionAsync();
-
-        var sql = @"
-            SELECT 
-                OBJECT_SCHEMA_NAME(fk.parent_object_id) + '.' + OBJECT_NAME(fk.parent_object_id) AS ParentTable,
-                COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS ParentColumn,
-                OBJECT_SCHEMA_NAME(fkc.referenced_object_id) + '.' + OBJECT_NAME(fkc.referenced_object_id) AS ReferencedTable,
-                COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS ReferencedColumn,
-                fk.name AS ForeignKeyName
-            FROM sys.foreign_keys fk
-            INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id";
-
-        if (!string.IsNullOrEmpty(tableName))
-        {
-            var (schema, table) = ParseObjectName(tableName);
-            sql += @"
-            INNER JOIN sys.tables t ON fk.parent_object_id = t.object_id
-            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE (t.name = @Table AND s.name = @Schema)
-               OR (OBJECT_NAME(fkc.referenced_object_id) = @Table 
-                   AND OBJECT_SCHEMA_NAME(fkc.referenced_object_id) = @Schema)";
-            sql += "\n            ORDER BY ParentTable, fk.name";
-            return await conn.QueryAsync<TableRelationship>(sql, new { Schema = schema, Table = table });
-        }
-
-        sql += "\n            ORDER BY ParentTable, fk.name";
-        return await conn.QueryAsync<TableRelationship>(sql);
-    }
-
     public async Task<IEnumerable<IndexUsageStats>> GetIndexUsageStatsAsync()
     {
         using var conn = await OpenConnectionAsync();
         const string sql = @"
-            SELECT TOP 30
-                OBJECT_SCHEMA_NAME(s.object_id) + '.' + OBJECT_NAME(s.object_id) AS Table,
+            SELECT 
+                OBJECT_NAME(s.object_id) AS Table,
                 i.name AS IndexName,
                 i.type_desc AS IndexType,
                 s.user_seeks AS UserSeeks,
@@ -286,90 +404,29 @@ public class DatabaseAnalyzer
                 s.last_user_seek AS LastSeek,
                 s.last_user_scan AS LastScan,
                 CASE 
-                    WHEN (s.user_seeks + s.user_scans + s.user_lookups) = 0 AND s.user_updates > 0 
-                    THEN 'UNUSED - candidate for removal'
-                    WHEN s.user_updates > (s.user_seeks + s.user_scans + s.user_lookups) * 10 
-                    THEN 'LOW VALUE - updates >> reads'
-                    ELSE 'OK'
+                    WHEN s.user_seeks = 0 AND s.user_scans = 0 THEN 'No usage — consider removing'
+                    WHEN s.user_updates > 100 AND (s.user_seeks + s.user_scans) < 10 THEN 'High updates, low usage'
+                    WHEN s.user_scans > 1000 THEN 'Heavy scan — review necessity'
+                    ELSE 'In use'
                 END AS Assessment
             FROM sys.dm_db_index_usage_stats s
             INNER JOIN sys.indexes i ON s.object_id = i.object_id AND s.index_id = i.index_id
-            WHERE s.database_id = DB_ID()
-              AND OBJECTPROPERTY(s.object_id, 'IsUserTable') = 1
-              AND i.name IS NOT NULL
-            ORDER BY (s.user_seeks + s.user_scans + s.user_lookups) ASC, s.user_updates DESC";
+            INNER JOIN sys.tables t ON i.object_id = t.object_id
+            WHERE OBJECTPROPERTY(s.object_id, 'IsUserTable') = 1
+            ORDER BY s.user_seeks + s.user_scans ASC";
 
         return await conn.QueryAsync<IndexUsageStats>(sql);
     }
 
-    public async Task<string> GetTriggerDefinitionAsync(string triggerName)
-    {
-        using var conn = await OpenConnectionAsync();
-        var (schema, name) = ParseObjectName(triggerName);
-
-        const string sql = @"
-            SELECT m.definition
-            FROM sys.sql_modules m
-            INNER JOIN sys.triggers t ON m.object_id = t.object_id
-            LEFT JOIN sys.objects parent ON t.parent_id = parent.object_id
-            LEFT JOIN sys.schemas s ON parent.schema_id = s.schema_id
-            WHERE t.name = @Name
-              AND (s.name = @Schema OR t.parent_id = 0)";
-
-        var result = await conn.QueryFirstOrDefaultAsync<string>(sql, new { Schema = schema, Name = name });
-        return result ?? $"Trigger '{name}' not found.";
-    }
-
-    public async Task<IEnumerable<ViewInfo>> ListViewsAsync()
-    {
-        using var conn = await OpenConnectionAsync();
-        const string sql = @"
-            SELECT 
-                s.name AS Schema,
-                v.name AS View,
-                v.create_date AS Created,
-                v.modify_date AS LastModified,
-                LEN(m.definition) AS DefinitionLength
-            FROM sys.views v
-            INNER JOIN sys.schemas s ON v.schema_id = s.schema_id
-            INNER JOIN sys.sql_modules m ON v.object_id = m.object_id
-            WHERE v.is_ms_shipped = 0
-            ORDER BY s.name, v.name";
-
-        return await conn.QueryAsync<ViewInfo>(sql);
-    }
-
-    public async Task<IEnumerable<TableRowCount>> GetTableRowCountsAsync()
-    {
-        using var conn = await OpenConnectionAsync();
-        const string sql = @"
-            SELECT 
-                s.name AS Schema,
-                t.name AS Table,
-                p.rows AS ApproxRowCount,
-                (SELECT COUNT(*) FROM sys.columns c WHERE c.object_id = t.object_id) AS ColumnCount,
-                (SELECT COUNT(*) FROM sys.indexes i WHERE i.object_id = t.object_id AND i.index_id > 0) AS IndexCount
-            FROM sys.tables t
-            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-            INNER JOIN sys.partitions p ON t.object_id = p.object_id AND p.index_id IN (0, 1)
-            WHERE t.is_ms_shipped = 0
-            ORDER BY p.rows DESC";
-
-        return await conn.QueryAsync<TableRowCount>(sql);
-    }
-
     public async Task<string> AnalyzeQueryPlanAsync(string query)
     {
-        // Security: validate the query before executing
         var validation = ValidateReadOnlyQuery(query);
         if (validation is not null)
             return $"BLOCKED: {validation}";
 
         using var conn = await OpenConnectionAsync();
 
-        // SHOWPLAN_XML returns the estimated plan WITHOUT executing the query
         await conn.ExecuteAsync("SET SHOWPLAN_XML ON");
-
         try
         {
             var planXml = await conn.QueryFirstOrDefaultAsync<string>(query);
@@ -381,10 +438,6 @@ public class DatabaseAnalyzer
         }
     }
 
-    /// <summary>
-    /// Validates that a query is read-only before allowing execution.
-    /// Blocks DDL, DML, and dangerous statements.
-    /// </summary>
     private static string? ValidateReadOnlyQuery(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -392,11 +445,9 @@ public class DatabaseAnalyzer
 
         var normalized = query.Trim().ToUpperInvariant();
 
-        // Must start with SELECT, WITH, or be a simple query
         if (!normalized.StartsWith("SELECT") && !normalized.StartsWith("WITH") && !normalized.StartsWith("("))
             return "Only SELECT queries are allowed. Query must start with SELECT or WITH.";
 
-        // Block dangerous keywords anywhere in the query
         string[] blockedKeywords = {
             "INSERT ", "UPDATE ", "DELETE ", "DROP ", "ALTER ", "CREATE ",
             "TRUNCATE ", "EXEC ", "EXECUTE ", "EXEC(", "EXECUTE(",
@@ -416,7 +467,7 @@ public class DatabaseAnalyzer
                 return $"Blocked keyword detected: '{keyword.Trim()}'. Only read-only SELECT queries are allowed.";
         }
 
-        return null; // Query is safe
+        return null;
     }
 
     private static (string schema, string name) ParseObjectName(string fullName)

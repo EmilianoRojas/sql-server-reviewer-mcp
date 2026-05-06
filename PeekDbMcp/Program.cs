@@ -1,7 +1,7 @@
 using Serilog;
 using PeekDbMcp.Configuration;
 using PeekDbMcp.Core;
-using PeekDbMcp.Services;
+using PeekDbMcp.Providers;
 using PeekDbMcp.Tools;
 
 try
@@ -10,7 +10,7 @@ try
 
     // Log to file (AppContext.BaseDirectory = output folder like bin/Debug/net8.0)
     var logDir = Path.Combine(AppContext.BaseDirectory, "Logs");
-    Directory.CreateDirectory(logDir);  // Ensure Logs folder exists
+    Directory.CreateDirectory(logDir);
     var logPath = Path.Combine(logDir, "mcp-.log");
 
     Log.Logger = new LoggerConfiguration()
@@ -21,13 +21,18 @@ try
             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
         .CreateLogger();
 
-    Log.Information("=== SQL Server Reviewer MCP starting ===");
+    Log.Information("=== PeekDbMCP starting ===");
 
     // Console.Error.WriteLine goes to stderr - safe for startup messages before MCP takes over
-    Console.Error.WriteLine("[SQL Server MCP] Server starting...");
-    Console.Error.WriteLine($"[SQL Server MCP] Connection: {MaskConnectionString(settings.ConnectionString)}");
+    Console.Error.WriteLine("[PeekDbMCP] Server starting...");
+    Console.Error.WriteLine($"[PeekDbMCP] Connection: {MaskConnectionString(settings.ConnectionString)}");
 
-    var db = new DatabaseAnalyzer(settings.ConnectionString);
+    // Determine provider from explicit setting or auto-detect
+    var explicitProvider = Environment.GetEnvironmentVariable("PEEKDB_PROVIDER");
+    var detectedProvider = explicitProvider ?? ProviderFactory.DetectProvider(settings.ConnectionString) ?? "Unknown";
+    Console.Error.WriteLine($"[PeekDbMCP] Provider: {detectedProvider}");
+
+    var db = ProviderFactory.Create(settings.ConnectionString, explicitProvider);
     var toolHandler = new ToolHandler(db);
     var dispatcher = new McpDispatcher(toolHandler);
 
@@ -38,24 +43,23 @@ try
         cts.Cancel();
     };
 
-    Console.Error.WriteLine("[SQL Server MCP] Ready - listening for MCP requests...");
+    Console.Error.WriteLine("[PeekDbMCP] Ready - listening for MCP requests...");
     await dispatcher.RunAsync(cts.Token);
 }
 catch (Exception ex)
 {
     Log.Fatal(ex, "MCP server crashed");
-    await Console.Error.WriteLineAsync($"[SQL Server MCP] FATAL: {ex.Message}");
+    await Console.Error.WriteLineAsync($"[PeekDbMCP] FATAL: {ex.Message}");
     Environment.ExitCode = 1;
 }
 finally
 {
-    Log.Information("=== SQL Server Reviewer MCP shutting down ===");
+    Log.Information("=== PeekDbMCP shutting down ===");
     await Log.CloseAndFlushAsync();
 }
 
 static string MaskConnectionString(string connectionString)
 {
-    // Mask password in connection string for logging
     if (string.IsNullOrEmpty(connectionString)) return "(empty)";
     var masked = System.Text.RegularExpressions.Regex.Replace(
         connectionString,
